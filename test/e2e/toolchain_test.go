@@ -81,7 +81,7 @@ func TestToolchain(t *testing.T) {
 	// 	checkCheResources(t, f.Client.Client, cheOperatorNS, cheOg, cheSub)
 	// })
 
-	t.Run("should recreate deleted operatorgroup for che", func(t *testing.T) {
+	t.Run("should recreate deleted operator group for che", func(t *testing.T) {
 		// given
 		ogList := &olmv1.OperatorGroupList{}
 		err := await.Client.List(context.TODO(), ogList, client.InNamespace(cheOperatorNS), client.MatchingLabels(toolchain.Labels()))

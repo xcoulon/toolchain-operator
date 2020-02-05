@@ -2,10 +2,11 @@ package toolchain
 
 import (
 	"fmt"
+	"testing"
+
 	toolchainv1alpha1 "github.com/codeready-toolchain/api/pkg/apis/toolchain/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 // TODo - This is copied as it is, due to issues of controller-runtime's client.Client. There is update on some methods of client.Client, which causes compile error. This can be removed once we updated controller-runtime for common
@@ -20,6 +21,11 @@ func AssertConditionsMatch(t *testing.T, actual []toolchainv1alpha1.Condition, e
 	for _, c := range expected {
 		AssertContainsCondition(t, actual, c)
 	}
+}
+
+// AssertConditionsEmpty verifies that the actual conditions are empty
+func AssertConditionsEmpty(t *testing.T, actual []toolchainv1alpha1.Condition) {
+	require.Empty(t, actual)
 }
 
 // AssertContainsCondition asserts that the specified list of conditions contains the specified condition.
