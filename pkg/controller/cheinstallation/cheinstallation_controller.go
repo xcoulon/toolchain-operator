@@ -132,7 +132,7 @@ func (r *ReconcileCheInstallation) Reconcile(request reconcile.Request) (reconci
 	}
 
 	if created, err := r.ensureCheSubscription(reqLogger, cheInstallation); err != nil {
-		return reconcile.Result{}, r.wrapErrorWithStatusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationFailed, err, "failed to create che subscription in namespace %s", cheInstallation.Spec.CheOperatorSpec.Namespace)
+		return reconcile.Result{}, r.wrapErrorWithStatusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationFailed, err, "failed to create Che subscription in namespace %s", cheInstallation.Spec.CheOperatorSpec.Namespace)
 	} else if created {
 		return reconcile.Result{}, nil
 	}
@@ -145,7 +145,7 @@ func (r *ReconcileCheInstallation) Reconcile(request reconcile.Request) (reconci
 
 	cheCluster, err := r.ensureCheCluster(reqLogger, cheInstallation)
 	if err != nil {
-		return reconcile.Result{}, r.wrapErrorWithStatusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationFailed, err, "failed to create che cluster in namespace %s", cheInstallation.Spec.CheOperatorSpec.Namespace)
+		return reconcile.Result{}, r.wrapErrorWithStatusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationFailed, err, "failed to create Che cluster in namespace %s", cheInstallation.Spec.CheOperatorSpec.Namespace)
 	}
 
 	installed, reason := getCheClusterStatus(cheCluster)
@@ -164,7 +164,7 @@ func (r *ReconcileCheInstallation) ensureCheNamespace(logger logr.Logger, cheIns
 	}
 	if err := r.client.Create(context.TODO(), namespace); err != nil {
 		if errors.IsAlreadyExists(err) {
-			logger.Info("Namespace for che operator already exists", "Namespace", cheOpNamespace)
+			logger.Info("Namespace for Che operator already exists", "Namespace", cheOpNamespace)
 			ns := v1.Namespace{}
 			if err := r.client.Get(context.TODO(), types.NamespacedName{Name: cheOpNamespace}, &ns); err != nil {
 				return false, err
@@ -178,7 +178,7 @@ func (r *ReconcileCheInstallation) ensureCheNamespace(logger logr.Logger, cheIns
 		logger.Info("Unexpected error while creating a namespace for Che operator", "Namespace", cheOpNamespace, "message", err.Error())
 		return false, err
 	}
-	logger.Info("Created a namespace for che operator", "Namespace", cheOpNamespace)
+	logger.Info("Created a namespace for Che operator", "Namespace", cheOpNamespace)
 	return true, nil
 }
 
@@ -208,10 +208,10 @@ func (r *ReconcileCheInstallation) ensureCheSubscription(logger logr.Logger, che
 			logger.Info("Subscription for Che already exists", "Subscription.Namespace", cheSub.Namespace, "Subscription.Name", cheSub.Name)
 			return false, nil
 		}
-		logger.Info("Unexpected error while creating a Subscription for che", "Subscription.Namespace", cheSub.Namespace, "Subscription.Name", cheSub.Name, "message", err.Error())
+		logger.Info("Unexpected error while creating a Subscription for Che", "Subscription.Namespace", cheSub.Namespace, "Subscription.Name", cheSub.Name, "message", err.Error())
 		return false, err
 	}
-	logger.Info("Created a Subscription for che", "Subscription.Namespace", cheSub.Namespace, "Subscription.Name", cheSub.Name)
+	logger.Info("Created a Subscription for Che", "Subscription.Namespace", cheSub.Namespace, "Subscription.Name", cheSub.Name)
 	return true, nil
 }
 
@@ -250,7 +250,7 @@ func (r *ReconcileCheInstallation) ensureCheCluster(logger logr.Logger, cheInsta
 			}
 			return *cluster, nil
 		}
-		logger.Info("Unexpected error while creating a CheCluster for che", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
+		logger.Info("Unexpected error while creating a CheCluster for Che", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
 		return che.CheCluster{}, err
 	}
 	logger.Info("Created a CheCluster for Che", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
