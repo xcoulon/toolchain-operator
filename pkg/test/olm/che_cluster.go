@@ -2,10 +2,11 @@ package olm
 
 import (
 	"context"
+	"testing"
+
 	testwait "github.com/codeready-toolchain/toolchain-operator/test/wait"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"testing"
 
 	orgv1 "github.com/eclipse/che-operator/pkg/apis/org/v1"
 	"github.com/stretchr/testify/assert"
@@ -38,6 +39,12 @@ func (a *CheClusterAssertion) Exists() *CheClusterAssertion {
 func (a *CheClusterAssertion) HasRunningStatus(want string) *CheClusterAssertion {
 	a.Exists()
 	assert.Equal(a.t, want, a.cheCluster.Status.CheClusterRunning)
+	return a
+}
+
+func (a *CheClusterAssertion) HasServerURL(want string) *CheClusterAssertion {
+	a.Exists()
+	assert.Equal(a.t, want, a.cheCluster.Status.CheURL)
 	return a
 }
 

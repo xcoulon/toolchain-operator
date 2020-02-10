@@ -12,6 +12,7 @@ import (
 	"github.com/codeready-toolchain/toolchain-operator/pkg/test"
 	. "github.com/codeready-toolchain/toolchain-operator/pkg/test/k8s"
 	. "github.com/codeready-toolchain/toolchain-operator/pkg/test/olm"
+	toolchaintest "github.com/codeready-toolchain/toolchain-operator/pkg/test/toolchain"
 	"github.com/codeready-toolchain/toolchain-operator/pkg/toolchain"
 	"github.com/codeready-toolchain/toolchain-operator/test/wait"
 	orgv1 "github.com/eclipse/che-operator/pkg/apis/org/v1"
@@ -209,6 +210,7 @@ func checkCheResources(t *testing.T, client client.Client, cheOperatorNs string,
 		AssertThatCheCluster(t, cheCluster.Namespace, cheCluster.Name, client).
 			Exists().
 			HasRunningStatus(cheinstallation.AvailableStatus)
+		toolchaintest.AssertThatCheInstallation(t, "", cheinstallation.InstallationName, client).HasServerURL(cheCluster.Status.CheURL)
 	}
 }
 
