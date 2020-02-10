@@ -716,7 +716,7 @@ func TestCreateNamespaceForChe(t *testing.T) {
 func TestGetCheClusterStatus(t *testing.T) {
 
 	t.Run("reason unknown as blank status", func(t *testing.T) {
-		cluster := orgv1.CheCluster{
+		cluster := &orgv1.CheCluster{
 			Status: orgv1.CheClusterStatus{},
 		}
 		installed, reason := getCheClusterStatus(cluster)
@@ -725,7 +725,7 @@ func TestGetCheClusterStatus(t *testing.T) {
 	})
 
 	t.Run("db not provisioned", func(t *testing.T) {
-		cluster := orgv1.CheCluster{
+		cluster := &orgv1.CheCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "codeready-workspaces",
 			},
@@ -740,7 +740,7 @@ func TestGetCheClusterStatus(t *testing.T) {
 	})
 
 	t.Run("keycloak not provisioned", func(t *testing.T) {
-		cluster := orgv1.CheCluster{
+		cluster := &orgv1.CheCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "codeready-workspaces",
 			},
@@ -756,7 +756,7 @@ func TestGetCheClusterStatus(t *testing.T) {
 	})
 
 	t.Run("openshift auth not provisioned", func(t *testing.T) {
-		cluster := orgv1.CheCluster{
+		cluster := &orgv1.CheCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "codeready-workspaces",
 			},
@@ -773,7 +773,7 @@ func TestGetCheClusterStatus(t *testing.T) {
 	})
 
 	t.Run("devfile registry url not set", func(t *testing.T) {
-		cluster := orgv1.CheCluster{
+		cluster := &orgv1.CheCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "codeready-workspaces",
 			},
@@ -791,7 +791,7 @@ func TestGetCheClusterStatus(t *testing.T) {
 	})
 
 	t.Run("plugin registry url not set", func(t *testing.T) {
-		cluster := orgv1.CheCluster{
+		cluster := &orgv1.CheCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "codeready-workspaces",
 			},
@@ -810,7 +810,7 @@ func TestGetCheClusterStatus(t *testing.T) {
 	})
 
 	t.Run("che url not set", func(t *testing.T) {
-		cluster := orgv1.CheCluster{
+		cluster := &orgv1.CheCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "codeready-workspaces",
 			},
@@ -830,7 +830,7 @@ func TestGetCheClusterStatus(t *testing.T) {
 	})
 
 	t.Run("che cluster running status unavailable", func(t *testing.T) {
-		cluster := orgv1.CheCluster{
+		cluster := &orgv1.CheCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "codeready-workspaces",
 			},
@@ -850,7 +850,7 @@ func TestGetCheClusterStatus(t *testing.T) {
 	})
 
 	t.Run("che cluster running status", func(t *testing.T) {
-		cluster := orgv1.CheCluster{
+		cluster := &orgv1.CheCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "codeready-workspaces",
 			},

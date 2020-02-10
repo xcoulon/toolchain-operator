@@ -236,31 +236,31 @@ func (r *ReconcileCheInstallation) ensureWatchCheCluster() (bool, error) {
 	return false, nil
 }
 
-func (r *ReconcileCheInstallation) ensureCheCluster(logger logr.Logger, cheInstallation *v1alpha1.CheInstallation) (che.CheCluster, error) {
+func (r *ReconcileCheInstallation) ensureCheCluster(logger logr.Logger, cheInstallation *v1alpha1.CheInstallation) (*che.CheCluster, error) {
 	cluster := NewCheCluster(cheInstallation.Spec.CheOperatorSpec.Namespace)
 	if err := controllerutil.SetControllerReference(cheInstallation, cluster, r.scheme); err != nil {
-		return che.CheCluster{}, err
+		return nil, err
 	}
 	if err := r.client.Create(context.TODO(), cluster); err != nil {
 		if errors.IsAlreadyExists(err) {
 			logger.Info("CheCluster already exists", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
 			cluster = &che.CheCluster{}
 			if err = r.client.Get(context.TODO(), types.NamespacedName{Name: CheClusterName, Namespace: cheInstallation.Spec.CheOperatorSpec.Namespace}, cluster); err != nil {
-				return che.CheCluster{}, err
+				return nil, err
 			}
-			return *cluster, nil
+			return cluster, nil
 		}
 		logger.Info("Unexpected error while creating a CheCluster for Che", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
-		return che.CheCluster{}, err
+		return nil, err
 	}
 	logger.Info("Created a CheCluster for Che", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
-	return *cluster, nil
+	return cluster, nil
 }
 
 // getCheClusterStatus returns `true, ""` if the CheCluster is `cheClusterRunning: Available`,
 // otherwise, it returns `false, <reason>`
-func getCheClusterStatus(cluster che.CheCluster) (bool, string) {
-	if cluster.Status == (che.CheClusterStatus{}) {
+func getCheClusterStatus(cluster *che.CheCluster) (bool, string) {
+	if cluster == nil || cluster.Status == (che.CheClusterStatus{}) {
 		return false, fmt.Sprintf("Status is unknown for CheCluster '%s'", CheClusterName)
 	}
 	if cluster.Status.CheClusterRunning == AvailableStatus {
@@ -323,7 +323,7 @@ func (r *ReconcileCheInstallation) setStatusCheInstallationFailed(cheInstallatio
 	return r.updateStatusConditions(cheInstallation, InstallationFailed(message))
 }
 
-func (r *ReconcileCheInstallation) setStatusCheInstallationSucceeded(cheCluster che.CheCluster) updateStatusFunc {
+func (r *ReconcileCheInstallation) setStatusCheInstallationSucceeded(cheCluster *che.CheCluster) updateStatusFunc {
 	return func(cheInstallation *v1alpha1.CheInstallation, message string) error {
 		cheInstallation.Status.CheServerURL = cheCluster.Status.CheURL
 		return r.updateStatusConditions(cheInstallation, InstallationSucceeded())
