@@ -148,9 +148,9 @@ func (r *ReconcileCheInstallation) Reconcile(request reconcile.Request) (reconci
 		return reconcile.Result{}, r.wrapErrorWithStatusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationFailed, err, "failed to create Che cluster in namespace %s", cheInstallation.Spec.CheOperatorSpec.Namespace)
 	}
 
-	installed, reason := getCheClusterStatus(cheCluster)
+	installed, msg := getCheClusterStatus(cheCluster)
 	if !installed {
-		return reconcile.Result{}, r.statusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationInstalling, reason)
+		return reconcile.Result{}, r.statusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationInstalling, msg)
 	}
 
 	return reconcile.Result{}, r.statusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationSucceeded(cheCluster), "")
