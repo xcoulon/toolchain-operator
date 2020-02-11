@@ -40,12 +40,6 @@ func (a *CheClusterAssertion) HasRunningStatus(want string) *CheClusterAssertion
 	return a
 }
 
-func (a *CheClusterAssertion) HasServerURL(want string) *CheClusterAssertion {
-	a.Exists()
-	assert.Equal(a.t, want, a.cheCluster.Status.CheURL)
-	return a
-}
-
 func (a *CheClusterAssertion) DoesNotExist() *CheClusterAssertion {
 	err := PollOnceOrUntilCondition(func() (done bool, err error) {
 		err = a.loadCheClusterAssertion()
