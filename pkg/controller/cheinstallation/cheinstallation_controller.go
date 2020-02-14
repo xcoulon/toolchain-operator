@@ -8,13 +8,16 @@ import (
 
 	toolchainv1alpha1 "github.com/codeready-toolchain/api/pkg/apis/toolchain/v1alpha1"
 	"github.com/codeready-toolchain/toolchain-common/pkg/condition"
+	commoncontroller "github.com/codeready-toolchain/toolchain-common/pkg/controller"
 	"github.com/codeready-toolchain/toolchain-operator/pkg/apis/toolchain/v1alpha1"
+
 	che "github.com/eclipse/che-operator/pkg/apis/org/v1"
 	orgv1 "github.com/eclipse/che-operator/pkg/apis/org/v1"
 	"github.com/go-logr/logr"
 	olmv1 "github.com/operator-framework/operator-lifecycle-manager/pkg/api/apis/operators/v1"
 	olmv1alpha1 "github.com/operator-framework/operator-lifecycle-manager/pkg/api/apis/operators/v1alpha1"
 	errs "github.com/pkg/errors"
+	"github.com/redhat-cop/operator-utils/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -77,7 +80,8 @@ func add(mgr manager.Manager, r *ReconcileCheInstallation) error {
 	}
 
 	watchCheCluster := func() error {
-		return c.Watch(&source.Kind{Type: &orgv1.CheCluster{}}, enqueueRequestForOwner)
+		// make sure that there's a label with this key on the CheCluster in order to trigger a new reconcile loop
+		return c.Watch(&source.Kind{Type: &orgv1.CheCluster{}}, commoncontroller.MapToOwnerByLabel("", "provider"))
 	}
 
 	err = watchCheCluster()
@@ -85,7 +89,10 @@ func add(mgr manager.Manager, r *ReconcileCheInstallation) error {
 		if !meta.IsNoMatchError(err) { // ignore NoKindMatchError
 			return err
 		}
+		log.Info("Postponing watcher on CheCluster resources")
 		r.watchCheCluster = watchCheCluster
+	} else {
+		log.Info("Added a watcher on the CheCluster resources")
 	}
 	return nil
 }
@@ -110,13 +117,36 @@ func (r *ReconcileCheInstallation) Reconcile(request reconcile.Request) (reconci
 	reqLogger.Info("Reconciling CheInstallation")
 
 	cheInstallation := &v1alpha1.CheInstallation{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, cheInstallation)
+	err := r.client.Get(context.TODO(), types.NamespacedName{
+		Name: InstallationName,
+	}, cheInstallation)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			reqLogger.Info("CheInstallation not found")
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{}, err
+	}
+	// ensure there's a finalizer, unless it's being deleted
+	if !util.IsBeingDeleted(cheInstallation) {
+		// Add the finalizer if it is not present
+		if err := r.addFinalizer(reqLogger, cheInstallation); err != nil {
+			return reconcile.Result{}, err
+		}
+	} else if util.IsBeingDeleted(cheInstallation) && util.HasFinalizer(cheInstallation, toolchainv1alpha1.FinalizerName) { // Che Installation is being deleted, but before that we should delete the Che Operator namespace explicitely
+		reqLogger.Info("Terminating CheInstallation")
+		if deleted, err := r.ensureCheClusterDeletion(reqLogger, cheInstallation); err != nil {
+			return reconcile.Result{}, r.wrapErrorWithStatusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationFailed, err, "failed to delete CheCluster resource in namespace %s", cheInstallation.Spec.CheOperatorSpec.Namespace)
+		} else if deleted {
+			return reconcile.Result{}, r.setStatusCheInstallationTerminating(cheInstallation, "deleting CheCluster resource")
+		} else {
+			// CheCluster resource as already deleted, we can now remove the finalizer on the CheInstallation
+			util.RemoveFinalizer(cheInstallation, toolchainv1alpha1.FinalizerName)
+			if err := r.client.Update(context.Background(), cheInstallation); err != nil {
+				return reconcile.Result{}, r.wrapErrorWithStatusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationTerminating, err, "failed to remove finalizer")
+			}
+			return reconcile.Result{}, nil
+		}
 	}
 
 	if requeue, err := r.ensureCheNamespace(reqLogger, cheInstallation); err != nil {
@@ -147,13 +177,25 @@ func (r *ReconcileCheInstallation) Reconcile(request reconcile.Request) (reconci
 	if err != nil {
 		return reconcile.Result{}, r.wrapErrorWithStatusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationFailed, err, "failed to create Che cluster in namespace %s", cheInstallation.Spec.CheOperatorSpec.Namespace)
 	}
-
 	installed, msg := getCheClusterStatus(cheCluster)
+	reqLogger.Info("checluster ensured", "msg", msg, "installed", installed)
 	if !installed {
 		return reconcile.Result{}, r.statusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationInstalling, msg)
 	}
 
+	reqLogger.Info("done with Che installation")
 	return reconcile.Result{}, r.statusUpdate(reqLogger, cheInstallation, r.setStatusCheInstallationSucceeded(cheCluster), "")
+}
+
+// setFinalizers sets the finalizers for NSTemplateSet
+func (r *ReconcileCheInstallation) addFinalizer(reqLogger logr.Logger, cheInstallation *v1alpha1.CheInstallation) error {
+	// Add the finalizer if it is not present
+	if !util.HasFinalizer(cheInstallation, toolchainv1alpha1.FinalizerName) {
+		util.AddFinalizer(cheInstallation, toolchainv1alpha1.FinalizerName)
+		reqLogger.Info("Adding finalizer on the CheInstallation resource")
+		return r.client.Update(context.TODO(), cheInstallation)
+	}
+	return nil
 }
 
 func (r *ReconcileCheInstallation) ensureCheNamespace(logger logr.Logger, cheInstallation *v1alpha1.CheInstallation) (bool, error) {
@@ -170,8 +212,8 @@ func (r *ReconcileCheInstallation) ensureCheNamespace(logger logr.Logger, cheIns
 				return false, err
 			}
 			if ns.Status.Phase != v1.NamespaceActive {
-				logger.Info("Namespace is not in active state", "namespace", ns.Name, "phase", ns.Status.Phase)
-				return true, nil // requeue until the namespace is active
+				logger.Info("Namespace is not in active state - deleting remaining CheCluster resource", "namespace", ns.Name, "phase", ns.Status.Phase)
+				return r.ensureCheClusterDeletion(logger, cheInstallation) // will return `true` if the CheCluster resource was deleted, `false` if it was already deleted.
 			}
 			return false, nil
 		}
@@ -180,6 +222,7 @@ func (r *ReconcileCheInstallation) ensureCheNamespace(logger logr.Logger, cheIns
 	}
 	logger.Info("Created a namespace for Che operator", "Namespace", cheOpNamespace)
 	return true, nil
+	
 }
 
 func (r *ReconcileCheInstallation) ensureCheOperatorGroup(logger logr.Logger, cheInstallation *v1alpha1.CheInstallation) (bool, error) {
@@ -230,17 +273,15 @@ func (r *ReconcileCheInstallation) ensureWatchCheCluster() (bool, error) {
 			log.Info("Unexpected error while creating a watcher on the CheGroup resources", "message", err.Error())
 			return false, err
 		}
+		log.Info("Added a watcher on the CheCluster resources")
 		r.watchCheCluster = nil // make sure watchCheCluster() should NOT be called afterwards
 	}
-	log.Info("Added a watcher on the CheGroup resources")
+	log.Info("Watcher on the CheGroup resources already added")
 	return false, nil
 }
 
 func (r *ReconcileCheInstallation) ensureCheCluster(logger logr.Logger, cheInstallation *v1alpha1.CheInstallation) (*che.CheCluster, error) {
 	cluster := NewCheCluster(cheInstallation.Spec.CheOperatorSpec.Namespace)
-	if err := controllerutil.SetControllerReference(cheInstallation, cluster, r.scheme); err != nil {
-		return nil, err
-	}
 	if err := r.client.Create(context.TODO(), cluster); err != nil {
 		if errors.IsAlreadyExists(err) {
 			logger.Info("CheCluster already exists", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
@@ -255,6 +296,26 @@ func (r *ReconcileCheInstallation) ensureCheCluster(logger logr.Logger, cheInsta
 	}
 	logger.Info("Created a CheCluster for Che", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
 	return cluster, nil
+}
+
+func (r *ReconcileCheInstallation) ensureCheClusterDeletion(logger logr.Logger, cheInstallation *v1alpha1.CheInstallation) (bool, error) {
+	cluster := &orgv1.CheCluster{}
+	if err := r.client.Get(context.TODO(), types.NamespacedName{
+		Namespace: cheInstallation.Spec.CheOperatorSpec.Namespace,
+		Name:      CheClusterName,
+	}, cluster); err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("CheCluster already deleted", "CheCluster.Namespace", cheInstallation.Spec.CheOperatorSpec.Namespace, "CheCluster.Name", CheClusterName)
+			return false, nil
+		}
+		logger.Info("Unexpected error while creating a CheCluster for Che", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
+		return false, err
+		// } else if cluster.DeletionTimestamp != nil {
+		// 	logger.Info("CheCluster already deleted", "CheCluster.Namespace", cheInstallation.Spec.CheOperatorSpec.Namespace, "CheCluster.Name", CheClusterName)
+		// 	return false, nil
+	}
+	logger.Info("Deleted CheCluster for Che", "CheCluster.Namespace", cluster.Namespace, "CheCluster.Name", cluster.Name)
+	return true, r.client.Delete(context.TODO(), cluster)
 }
 
 // getCheClusterStatus returns `true, ""` if the CheCluster is `cheClusterRunning: Available`,
@@ -316,11 +377,18 @@ func (r *ReconcileCheInstallation) updateStatusConditions(cheInstallation *v1alp
 }
 
 func (r *ReconcileCheInstallation) setStatusCheInstallationInstalling(cheInstallation *v1alpha1.CheInstallation, message string) error {
+	cheInstallation.Status.CheServerURL = "" // make sure the URL is empty while Che is being (re)installed
 	return r.updateStatusConditions(cheInstallation, Installing(message))
 }
 
 func (r *ReconcileCheInstallation) setStatusCheInstallationFailed(cheInstallation *v1alpha1.CheInstallation, message string) error {
+	cheInstallation.Status.CheServerURL = "" // make sure the URL is empty while Che is being (re)installed
 	return r.updateStatusConditions(cheInstallation, InstallationFailed(message))
+}
+
+func (r *ReconcileCheInstallation) setStatusCheInstallationTerminating(cheInstallation *v1alpha1.CheInstallation, message string) error {
+	cheInstallation.Status.CheServerURL = "" // make sure the URL is empty while Che is being (re)installed
+	return r.updateStatusConditions(cheInstallation, Terminating(message))
 }
 
 func (r *ReconcileCheInstallation) setStatusCheInstallationSucceeded(cheCluster *che.CheCluster) updateStatusFunc {

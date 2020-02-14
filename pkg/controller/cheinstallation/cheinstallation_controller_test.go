@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -388,7 +389,9 @@ func TestReconcile(t *testing.T) {
 			require.NoError(t, err)
 			AssertThatOperatorGroup(t, cheOperatorNS, OperatorGroupName, cl).Exists()
 			AssertThatSubscription(t, cheOperatorNS, SubscriptionName, cl).Exists()
-			AssertThatCheCluster(t, cheCluster.Namespace, cheCluster.Name, cl).Exists()
+			AssertThatCheCluster(t, cheCluster.Namespace, cheCluster.Name, cl).
+				Exists().
+				HasNoOwnerRef()
 			AssertThatCheInstallation(t, cheInstallation.Namespace, cheInstallation.Name, cl).
 				HasConditions(Installing("Status is unknown for CheCluster 'codeready-workspaces'"))
 		})
@@ -446,7 +449,9 @@ func TestReconcile(t *testing.T) {
 			AssertThatOperatorGroup(t, cheOperatorNS, OperatorGroupName, cl).Exists()
 			AssertThatSubscription(t, cheOperatorNS, SubscriptionName, cl).Exists()
 			AssertThatCheCluster(t, cheCluster.Namespace, cheCluster.Name, cl).DoesNotExist()
-			AssertThatCheInstallation(t, cheInstallation.Namespace, cheInstallation.Name, cl).HasConditions(InstallationFailed(errMsg))
+			AssertThatCheInstallation(t, cheInstallation.Namespace, cheInstallation.Name, cl).
+				HasServerURL(cheCluster.Status.CheURL).
+				HasConditions(InstallationFailed(errMsg))
 		})
 
 		t.Run("should update status when failed to get existing checluster", func(t *testing.T) {
@@ -476,6 +481,49 @@ func TestReconcile(t *testing.T) {
 			AssertThatSubscription(t, cheOperatorNS, SubscriptionName, cl).Exists()
 			AssertThatCheCluster(t, cheCluster.Namespace, cheCluster.Name, cl).DoesNotExist()
 			AssertThatCheInstallation(t, cheInstallation.Namespace, cheInstallation.Name, cl).HasConditions(InstallationFailed("checlusters.org.eclipse.che \"codeready-workspaces\" not found"))
+		})
+
+		t.Run("should delete CheCluster when deleting CheInstallation", func(t *testing.T) {
+			// given
+			cheInstallation := NewInstallation()
+			deletionTS := metav1.NewTime(time.Now())
+			cheInstallation.SetDeletionTimestamp(&deletionTS) // mark resource as deleted
+			cheOperatorNS := cheInstallation.Spec.CheOperatorSpec.Namespace
+			cheCluster := NewCheCluster(cheOperatorNS)
+			cl, r := configureClient(t, cheInstallation,
+				newCheNamespace(cheOperatorNS, v1.NamespaceActive),
+				NewOperatorGroup(cheOperatorNS),
+				NewSubscription(cheOperatorNS),
+				cheCluster)
+			// make sure that the client sets the `deletionTimeStamp` when a CheCluster resource is deleted
+			cl.MockDelete = func(ctx context.Context, obj runtime.Object, opts ...client.DeleteOption) error {
+				fmt.Printf("deleting resource of type '%T'\n", obj)
+				if obj, ok := obj.(*orgv1.CheCluster); ok {
+					// mark namespaces as deleted...
+					deletionTS := metav1.NewTime(time.Now())
+					obj.SetDeletionTimestamp(&deletionTS)
+					// ... but replace them in the fake client cache yet instead of deleting them
+					return cl.Client.Update(ctx, obj)
+				}
+				return cl.Client.Delete(ctx, obj, opts...)
+			}
+			require.Nil(t, cheCluster.DeletionTimestamp)
+			// when
+			request := newReconcileRequest(cheInstallation)
+
+			// when
+			_, err := r.Reconcile(request)
+
+			// then
+			require.NoError(t, err)
+			updateCheCluster := orgv1.CheCluster{}
+			err = r.client.Get(context.TODO(), types.NamespacedName{
+				Namespace: cheCluster.Namespace,
+				Name:      cheCluster.Name,
+			}, &updateCheCluster)
+			require.NoError(t, err)
+
+			assert.NotNil(t, updateCheCluster.DeletionTimestamp)
 		})
 	})
 
